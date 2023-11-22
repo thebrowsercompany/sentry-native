@@ -31,8 +31,9 @@ jobs:
           arch: ${{ matrix.arch }}
 
       - name: Workaround for ARM64
-        if: ${{ matrix.arch }} == 'arm64'
-        run: git submodule update --remote external/crashpad/third_party/zlib
+        if: matrix.arch == 'arm64'
+        run: git submodule update --remote third_party/zlib
+        working-directory: external/crashpad
 
       - name: Configure Sentry
         run: >
