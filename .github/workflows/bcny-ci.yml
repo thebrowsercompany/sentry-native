@@ -40,3 +40,17 @@ jobs:
                 -D CMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }} `
       - name: Build Sentry
         run: cmake --build out --config Release
+
+      - name: Stage Sentry
+        run: |
+          New-Item -ItemType Directory -Path sentry-native\bin\win64 -Force | Out-Null
+          New-Item -ItemType Directory -Path sentry-native\include -Force | Out-Null
+          New-Item -ItemType Directory -Path sentry-native\lib\win64 -Force | Out-Null
+          Copy-Item include\sentry.h sentry-native\include\
+          Copy-Item out\Release\sentry.dll sentry-native\bin\win64\
+          Copy-Item out\Release\sentry.lib sentry-native\lib\win64\
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: sentry-native-windows-${{ matrix.arch }}
+          path: sentry-native
