@@ -32,11 +32,11 @@ jobs:
 
       - name: Configure Sentry
         run: >
-          cmake -B out
-                -D CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.19041.0
-                -G "Visual Studio 17 2022"
-                -A ${{ matrix.platform }}
-                -D CMAKE_SYSTEM_NAME=Windows
-                -D CMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }}
+          cmake -B out `
+                -D CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.19041.0 `
+                -G "Visual Studio 17 2022" `
+                -A ${{ matrix.platform }} `
+                -D CMAKE_SYSTEM_NAME=Windows `
+                -D CMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }} `
       - name: Build Sentry
         run: cmake --build out --config Release
