@@ -30,6 +30,10 @@ jobs:
           host_arch: amd64
           arch: ${{ matrix.arch }}
 
+      - name: Workaround for ARM64
+        if: ${{ matrix.arch }} == 'arm64'
+        run: git submodule update --remote external/crashpad/third_party/zlib
+
       - name: Configure Sentry
         run: >
           cmake -B out `
