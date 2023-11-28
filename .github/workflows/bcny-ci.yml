@@ -15,9 +15,9 @@ jobs:
 
       matrix:
         include:
-          - arch: 'amd64'
+          - arch: 'AMD64'
             platform: 'x64'
-          - arch: 'arm64'
+          - arch: 'ARM64'
             platform: 'ARM64'
 
     steps:
