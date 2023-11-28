@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Workaround
         run: |
-          git fetch pull/92/head
+          git fetch origin pull/92/head
           git cherry-pick FETCH_HEAD
         working-directory: external/crashpad
 
