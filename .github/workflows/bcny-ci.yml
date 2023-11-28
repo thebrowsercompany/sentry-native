@@ -30,9 +30,10 @@ jobs:
           host_arch: amd64
           arch: ${{ matrix.arch }}
 
-      - name: Workaround for ARM64
-        if: matrix.arch == 'arm64'
-        run: git submodule update --remote third_party/zlib
+      - name: Build Workaround
+        run: |
+          git fetch pull/92/head
+          git cherry-pick FETCH_HEAD
         working-directory: external/crashpad
 
       - name: Configure Sentry
