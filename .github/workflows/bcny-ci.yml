@@ -36,6 +36,8 @@ jobs:
           git config --global user.name "Arc Builder"
           git fetch origin pull/92/head
           git cherry-pick FETCH_HEAD
+          git fetch origin pull/93/head
+          git cherry-pick FETCH_HEAD
         working-directory: external/crashpad
 
       - name: Configure Sentry
