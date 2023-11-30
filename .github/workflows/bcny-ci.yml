@@ -57,7 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: sentry-native-windows-${{ matrix.arch }}
-          path: sentry-native
+          path: sentry-native-development
 
       - run: |
           $suffix = "${{ matrix.arch }}".ToLower()
