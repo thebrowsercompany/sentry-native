@@ -92,4 +92,4 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: windows-${{ matrix.arch }}.nupkg
-          path: io.sentry.sentry-native.win.arm64.0.0.0-*.nupkg
+          path: io.sentry.sentry-native.win.*.0.0.0-*.nupkg
