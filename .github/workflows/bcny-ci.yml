@@ -59,13 +59,14 @@ jobs:
           name: sentry-native-windows-${{ matrix.arch }}
           path: sentry-native-development
 
-      - run: |
+      - name: Package Sentry
+        run: |
           $suffix = "${{ matrix.arch }}".ToLower()
           @"
           <?xml version="1.0" encoding="utf-8"?>
           <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
             <metadata>
-              <id>io.sentry.sentry-native.$suffix</id>
+              <id>io.sentry.sentry-native.win.$suffix</id>
               <version>0.0.0.0</version>
               <title>Sentry Native SDK</title>
               <description>C++ Sentry Native SDK</description>
@@ -91,4 +92,4 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: windows-${{ matrix.arch }}.nupkg
-          path: sentry.nupkg
+          path: io.sentry.sentry-native.win.arm64.0.0.0-*.nupkg
