@@ -52,19 +52,9 @@ jobs:
         run: cmake --build out --config RelWithDebInfo
 
       - name: Stage Sentry
-        run: |
-          New-Item -ItemType Directory -Path sentry-native\bin\win64 -Force | Out-Null
-          New-Item -ItemType Directory -Path sentry-native\include -Force | Out-Null
-          New-Item -ItemType Directory -Path sentry-native\lib\win64 -Force | Out-Null
-          Copy-Item include\sentry.h sentry-native\include\
-          Copy-Item out\RelWithDebInfo\sentry.dll sentry-native\bin\win64\
-          Copy-Item out\RelWithDebInfo\sentry.pdb sentry-native\bin\win64\
-          Copy-Item out\crashpad_build\handler\RelWithDebInfo\crashpad_wer.dll sentry-native\bin\win64\
-          Copy-Item out\crashpad_build\handler\RelWithDebInfo\crashpad_wer.pdb sentry-native\bin\win64\
-          Copy-Item out\crashpad_build\handler\RelWithDebInfo\crashpad_handler.exe sentry-native\bin\win64\
-          Copy-Item out\RelWithDebInfo\sentry.lib sentry-native\lib\win64\
+        run: cmake --install out --config RelWithDebInfo --prefix sentry-native-development/usr
 
       - uses: actions/upload-artifact@v3
         with:
           name: sentry-native-windows-${{ matrix.arch }}
-          path: sentry-native
+          path: sentry-native-development
