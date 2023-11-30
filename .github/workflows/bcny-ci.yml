@@ -74,14 +74,14 @@ jobs:
               <repository type="git" url="https://github.com/getsentry/sentry-native" branch="main" />
             </metadata>
             <files>
-              <file src="$DESTDIR$\bin\crashpad_handler.exe" target="bin" />
-              <file src="$DESTDIR$\bin\crashpad_handler.pdb" target="bin" />
-              <file src="$DESTDIR$\bin\crashpad_wer.dll" target="bin" />
-              <file src="$DESTDIR$\bin\crashpad_wer.pdb" target="bin" />
-              <file src="$DESTDIR$\bin\sentry.dll" target="bin" />
-              <file src="$DESTDIR$\bin\sentry.pdb" target="bin" />
-              <file src="$DESTDIR$\lib\sentry.lib" target="lib" />
-              <file src="$DESTDIR$\include\sentry.h" target="include" />
+              <file src="`$DESTDIR`$\bin\crashpad_handler.exe" target="bin" />
+              <file src="`$DESTDIR`$\bin\crashpad_handler.pdb" target="bin" />
+              <file src="`$DESTDIR`$\bin\crashpad_wer.dll" target="bin" />
+              <file src="`$DESTDIR`$\bin\crashpad_wer.pdb" target="bin" />
+              <file src="`$DESTDIR`$\bin\sentry.dll" target="bin" />
+              <file src="`$DESTDIR`$\bin\sentry.pdb" target="bin" />
+              <file src="`$DESTDIR`$\lib\sentry.lib" target="lib" />
+              <file src="`$DESTDIR`$\include\sentry.h" target="include" />
             </files>
           </package>
           "@ | Out-File -Encoding UTF8 sentry.nuspec
