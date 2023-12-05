@@ -101,7 +101,7 @@ jobs:
           NUGET_SOURCE_USERNAME: thebrowsercompany-bot2
           NUGET_SOURCE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
-        run:
+        run: >
           if ((nuget sources List | Select-String "${env:NUGET_SOURCE_NAME}").Count -gt 0) {
             nuget sources Remove -Name "${env:NUGET_SOURCE_NAME}"
           }
