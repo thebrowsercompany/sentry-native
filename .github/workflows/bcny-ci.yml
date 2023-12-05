@@ -107,5 +107,6 @@ jobs:
           }
           nuget sources Add -Name ${env:NUGET_SOURCE_NAME} -Source ${env:NUGET_SOURCE_URL} -Username ${env:NUGET_SOURCE_USERNAME} -Password ${env:NUGET_SOURCE_PASSWORD} -StorePasswordInClearText
           nuget setApiKey ${env:NUGET_API_KEY} -Source ${env:NUGET_SOURCE_URL}
-          nuget push io.sentry.win.crashpad.*.nupkg -Source ${env:NUGET_SOURCE_URL} -SkipDuplicate
+          $pkgs = Get-ChildItem -Path io.sentry.win.crashpad.*.nupkg
+          nuget push @pkgs -Source ${env:NUGET_SOURCE_URL} -SkipDuplicate
         shell: pwsh
