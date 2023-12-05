@@ -66,7 +66,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
             <metadata>
-              <id>io.sentry.sentry-native.win.$suffix</id>
+              <id>io.sentry.sentry-native.win.crashpad.$suffix</id>
               <version>0.0.0.0</version>
               <title>Sentry Native SDK</title>
               <description>C++ Sentry Native SDK</description>
