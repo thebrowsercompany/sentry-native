@@ -30,16 +30,6 @@ jobs:
           host_arch: amd64
           arch: ${{ matrix.arch }}
 
-      - name: Build Workaround
-        run: |
-          git config --global user.email "builder@thebrowser.company"
-          git config --global user.name "Arc Builder"
-          git fetch origin pull/92/head
-          git cherry-pick FETCH_HEAD
-          git fetch origin pull/93/head
-          git cherry-pick FETCH_HEAD
-        working-directory: external/crashpad
-
       - name: Configure Sentry
         run: >
           cmake -B out `
