@@ -56,7 +56,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
             <metadata>
-              <id>io.sentry.sentry-native.win.crashpad.$suffix</id>
+              <id>io.sentry.sentry-native.crashpad.windows.$suffix</id>
               <version>0.0.0.0</version>
               <title>Sentry Native SDK</title>
               <description>C++ Sentry Native SDK</description>
@@ -97,6 +97,6 @@ jobs:
           }
           nuget sources Add -Name ${env:NUGET_SOURCE_NAME} -Source ${env:NUGET_SOURCE_URL} -Username ${env:NUGET_SOURCE_USERNAME} -Password ${env:NUGET_SOURCE_PASSWORD} -StorePasswordInClearText
           nuget setApiKey ${env:NUGET_API_KEY} -Source ${env:NUGET_SOURCE_URL}
-          $pkgs = Get-ChildItem -Path io.sentry.sentry-native.win.crashpad.*.nupkg
+          $pkgs = Get-ChildItem -Path io.sentry.sentry-native.crashpad.windows.*.nupkg
           nuget push $pkgs[0].Name -Source ${env:NUGET_SOURCE_URL} -SkipDuplicate
         shell: pwsh
