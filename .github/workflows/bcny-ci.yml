@@ -100,3 +100,12 @@ jobs:
           $pkgs = Get-ChildItem -Path io.sentry.sentry-native.crashpad.windows.*.nupkg
           nuget push $pkgs[0].Name -Source ${env:NUGET_SOURCE_URL} -SkipDuplicate
         shell: pwsh
+
+      - name: Upload PDBs to Azure
+        if: always()
+        uses: microsoft/action-publish-symbols@719c40b80e38bca806f3e01e1e3dd3a67554cd68
+        with:
+          accountName: thebrowsercompany
+          personalAccessToken: ${{ secrets.SYMBOL_SERVER_PAT }}
+          symbolsFolder: ${{ env.DESTDIR }}\bin
+          searchPattern: '**/*.pdb'
