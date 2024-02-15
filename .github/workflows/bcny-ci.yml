@@ -106,5 +106,5 @@ jobs:
         with:
           accountName: thebrowsercompany
           personalAccessToken: ${{ secrets.SYMBOL_SERVER_PAT }}
-          symbolsFolder: `$DESTDIR`$\bin
+          symbolsFolder: entry-native-development/usr/bin
           searchPattern: '**/*.pdb'
