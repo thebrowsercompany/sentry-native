@@ -102,7 +102,7 @@ jobs:
         shell: pwsh
 
       - name: Upload PDBs to Azure
-        if: always()
+        if: success()
         uses: microsoft/action-publish-symbols@719c40b80e38bca806f3e01e1e3dd3a67554cd68
         with:
           accountName: thebrowsercompany
