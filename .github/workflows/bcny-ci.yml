@@ -106,5 +106,5 @@ jobs:
         with:
           accountName: thebrowsercompany
           personalAccessToken: ${{ secrets.SYMBOL_SERVER_PAT }}
-          symbolsFolder: ${{ github.workspace }}\entry-native-development\usr\bin
+          symbolsFolder: ${{ github.workspace }}\..\entry-native-development\usr\bin
           searchPattern: '**/*.pdb'
