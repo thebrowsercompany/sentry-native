@@ -107,4 +107,4 @@ jobs:
           accountName: thebrowsercompany
           personalAccessToken: ${{ secrets.SYMBOL_SERVER_PAT }}
           symbolsFolder: ${{ github.workspace }}\sentry-native-development\usr\bin
-          searchPattern: '**/*.@(dll|exe|pdb)'
+          searchPattern: '**/*.{dll,exe,pdb}'
