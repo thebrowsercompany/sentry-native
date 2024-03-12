@@ -108,3 +108,11 @@ jobs:
           personalAccessToken: ${{ secrets.SYMBOL_SERVER_PAT }}
           symbolsFolder: ${{ github.workspace }}\sentry-native-development\usr\bin
           searchPattern: '**/*.pdb'
+
+      - name: Upload DLLs to Azure
+        uses: microsoft/action-publish-symbols@719c40b80e38bca806f3e01e1e3dd3a67554cd68
+        with:
+          accountName: thebrowsercompany
+          personalAccessToken: ${{ secrets.SYMBOL_SERVER_PAT }}
+          symbolsFolder: ${{ github.workspace }}\sentry-native-development\usr\bin
+          searchPattern: '**/*.dll'
