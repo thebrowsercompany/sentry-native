@@ -537,6 +537,12 @@ sentry_options_set_database_pathw(sentry_options_t *opts, const wchar_t *path)
 }
 #endif
 
+const wchar_t *
+sentry_options_get_handler_ipc_pipew(sentry_options_t *opts)
+{
+    return opts->handler_ipc_pipe ? opts->handler_ipc_pipe->path : NULL;
+}
+
 /**
  * Sets the maximum number of spans that can be attached to a
  * transaction.

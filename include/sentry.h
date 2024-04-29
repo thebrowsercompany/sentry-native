@@ -1212,6 +1212,14 @@ SENTRY_API void sentry_options_set_database_pathw(
     sentry_options_t *opts, const wchar_t *path);
 SENTRY_API void sentry_options_set_database_pathw_n(
     sentry_options_t *opts, const wchar_t *path, size_t path_len);
+
+/**
+ * Returns the name of the named pipe where the Crashpad handler is listening
+ * for child connections if Crashpad is active backend.
+ */
+SENTRY_API const wchar_t *sentry_options_get_handler_ipc_pipew(
+    sentry_options_t *opts);
+
 #endif
 
 /**
