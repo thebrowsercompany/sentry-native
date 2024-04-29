@@ -68,6 +68,11 @@ typedef struct sentry_options_s {
     struct sentry_backend_s *backend;
     sentry_session_t *session;
 
+#ifdef SENTRY_PLATFORM_WINDOWS
+    /* Filled out after crashpad startup, only on Windows */
+    sentry_path_t* handler_ipc_path;
+#endif
+
     long user_consent;
     long refcount;
     uint64_t shutdown_timeout;
