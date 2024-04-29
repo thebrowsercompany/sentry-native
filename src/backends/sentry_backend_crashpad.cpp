@@ -357,7 +357,7 @@ crashpad_backend_startup(
             /* asynchronous_start */ false, attachments);
 #ifdef SENTRY_PLATFORM_WINDOWS
         std::wstring pipe_name = data->client->GetHandlerIPCPipe();
-        const_cast<sentry_options_t *>(options)->handler_ipc_path
+        const_cast<sentry_options_t *>(options)->handler_ipc_pipe
             = sentry__path_new(pipe_name.c_str());
 #endif
         sentry_free(minidump_url);

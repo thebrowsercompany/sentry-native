@@ -70,7 +70,7 @@ typedef struct sentry_options_s {
 
 #ifdef SENTRY_PLATFORM_WINDOWS
     /* Filled out after crashpad startup, only on Windows */
-    sentry_path_t* handler_ipc_path;
+    sentry_path_t* handler_ipc_pipe;
 #endif
 
     long user_consent;
