@@ -17,8 +17,8 @@ typedef struct sentry_session_s {
     char *environment;
     sentry_uuid_t session_id;
     sentry_value_t distinct_id;
-    uint64_t started_ms;
-    uint64_t duration_ms;
+    uint64_t started_us;
+    uint64_t duration_us;
     uint64_t errors;
     sentry_session_status_t status;
     long init;
@@ -27,7 +27,7 @@ typedef struct sentry_session_s {
 /**
  * This creates a new session.
  */
-sentry_session_t *sentry__session_new(void);
+sentry_session_t *sentry__session_new(const sentry_scope_t *scope);
 
 /**
  * This will free a previously allocated session.
@@ -66,6 +66,7 @@ void sentry__record_errors_on_current_session(uint32_t error_count);
 /**
  * This will update a sessions `distinct_id`, which is based on the user.
  */
-void sentry__session_sync_user(sentry_session_t *session, sentry_value_t user);
+void sentry__session_sync_user(sentry_session_t *session, sentry_value_t user,
+    const char *installation_id);
 
 #endif

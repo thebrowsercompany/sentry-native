@@ -1,0 +1,56 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/docker/**'
+      - 'tests/requirements.txt'
+  workflow_dispatch:
+
+jobs:
+  alpine:
+    name: Build alpine:${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '3.21'
+          - '3.23'
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sentry-native-alpine:${{ matrix.version }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pin@v7.0.1
+
+      - name: Copy test requirements
+        run: |
+          git update-index --assume-unchanged .github/docker/alpine/requirements.txt
+          cp tests/requirements.txt .github/docker/alpine/requirements.txt
+
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # pin@v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE_NAME }}
+          context: .github/docker/alpine
+          build-args: |
+            BASE=alpine:${{ matrix.version }}
+            PIP_INSTALL=${{ matrix.version == '3.23' && 'mitmproxy' || '' }}

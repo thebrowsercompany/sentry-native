@@ -2,7 +2,7 @@
 #define SENTRY_VALUE_H_INCLUDED
 
 #include "sentry_boot.h"
-
+#include "sentry_json.h"
 /**
  * Create a new Value from an owned string.
  */
@@ -46,6 +46,12 @@ sentry_value_t sentry__value_new_internal_uuid(const sentry_uuid_t *uuid);
 sentry_value_t sentry__value_new_uuid(const sentry_uuid_t *uuid);
 
 /**
+ * Creates a new Event with the given `event_id`.
+ * Used by Crashpad to allow associating feedback with the crash event.
+ */
+sentry_value_t sentry__value_new_event_with_id(const sentry_uuid_t *event_id);
+
+/**
  * Creates a new String Value from the given `level`.
  * This can be `debug`, `warning`, `error`, `fatal`, or `info`.
  */
@@ -60,6 +66,28 @@ sentry_value_t sentry__value_new_list_with_size(size_t size);
  * Creates a new Object Value with a capacity of `size`.
  */
 sentry_value_t sentry__value_new_object_with_size(size_t size);
+
+/**
+ * Iterates over the key/value pairs of an object value. The callback receives a
+ * borrowed reference for each value. Does nothing if `value` is not an object.
+ */
+void sentry__value_foreach_key_value(sentry_value_t value,
+    void (*callback)(const char *key, sentry_value_t value, void *userdata),
+    void *userdata);
+
+/**
+ * Sets a value by an already-owned key.
+ * Takes ownership of `key` and `v`.
+ */
+int sentry__value_set_by_key_owned(
+    sentry_value_t value, char *key, size_t key_len, sentry_value_t v);
+
+/**
+ * Removes a value by key and returns the owned object key on success.
+ * The caller must free the returned key.
+ */
+char *sentry__value_remove_and_take_key_n(
+    sentry_value_t value, const char *key, size_t key_len);
 
 /**
  * This will parse the Value into a UUID, or return a `nil` UUID on error.
@@ -80,16 +108,6 @@ char *sentry__value_stringify(sentry_value_t value);
 sentry_value_t sentry__value_clone(sentry_value_t value);
 
 /**
- * This appends `v` to the List `value`.
- * It will remove the first value of the list, is case the total number if items
- * would exceed `max`.
- *
- * Returns 0 on success.
- */
-int sentry__value_append_bounded(
-    sentry_value_t value, sentry_value_t v, size_t max);
-
-/**
  * Deep-merges object src into dst.
  *
  * For each key-value pair in the src object the same key in the dst object
@@ -106,11 +124,16 @@ int sentry__value_append_bounded(
 int sentry__value_merge_objects(sentry_value_t dst, sentry_value_t src);
 
 /**
- * Parse the given JSON string into a new Value.
+ * Shallow-merges the top-level keys from src into dst, keeping keys that dst
+ * already has.
+ *
+ * Unlike `sentry__value_merge_objects`, values are copied whole and are never
+ * merged recursively, so a nested object in src cannot add fields to a
+ * same-keyed object already present in dst.
+ *
+ * Returns 0 on success.
  */
-sentry_value_t sentry__value_from_json(const char *buf, size_t buflen);
-
-typedef struct sentry_jsonwriter_s sentry_jsonwriter_t;
+int sentry__value_merge_objects_shallow(sentry_value_t dst, sentry_value_t src);
 
 /**
  * Writes the given `value` into the `jsonwriter`.
@@ -118,7 +141,49 @@ typedef struct sentry_jsonwriter_s sentry_jsonwriter_t;
 void sentry__jsonwriter_write_value(
     sentry_jsonwriter_t *jw, sentry_value_t value);
 
-sentry_value_t sentry__value_new_span_uuid(const sentry_uuid_t *uuid);
+/**
+ * Serializes `value` into JSON and optionally returns the byte length.
+ */
+char *sentry__value_to_json(sentry_value_t value, size_t *len_out);
 
-sentry_value_t sentry__value_new_internal_uuid(const sentry_uuid_t *uuid);
+/**
+ * Adds a typed attribute to the attributes object.
+ * No-op if the attribute already exists (preserves user precedence).
+ * Takes ownership of `value`.
+ */
+void sentry__value_add_attribute(sentry_value_t attributes,
+    sentry_value_t value, const char *type, const char *name);
+
+/**
+ * Deserialize a single sentry value from msgpack.
+ *
+ * The value must span the whole buffer; buffers containing multiple
+ * sequential msgpack values (as in append-only streams like breadcrumb ring
+ * files) are rejected with null and must be decoded with
+ * `sentry__value_from_msgpack_stream`.
+ *
+ * The returned value must be released with `sentry_value_decref`.
+ */
+sentry_value_t sentry__value_from_msgpack(const char *buf, size_t buf_len);
+
+/**
+ * Deserialize a buffer of sequential msgpack values into a list.
+ *
+ * Unlike `sentry__value_from_msgpack`, the result is a list even when the
+ * buffer holds a single value, so files written as append-only streams (e.g.
+ * breadcrumb ring files) decode to a consistent shape. Returns null for an
+ * empty buffer or when the first value fails to parse.
+ *
+ * The returned value must be released with `sentry_value_decref`.
+ */
+sentry_value_t sentry__value_from_msgpack_stream(
+    const char *buf, size_t buf_len);
+
+/**
+ * Merges two breadcrumb lists in timestamp order, keeping at most `max` items.
+ * Returns a new list with the merged breadcrumbs.
+ */
+sentry_value_t sentry__value_merge_breadcrumbs(
+    sentry_value_t list_a, sentry_value_t list_b, size_t max);
+
 #endif
