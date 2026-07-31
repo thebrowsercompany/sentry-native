@@ -4,12 +4,13 @@
 #include "sentry_modulefinder_linux.h"
 
 #include "sentry_core.h"
+#include "sentry_elf.h"
 #include "sentry_path.h"
 #include "sentry_string.h"
 #include "sentry_sync.h"
+#include "sentry_utils.h"
 #include "sentry_value.h"
 
-#include <arpa/inet.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <string.h>
@@ -31,14 +32,16 @@ process_vm_readv(pid_t __pid, const struct iovec *__local_iov,
 }
 #endif
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-
 #define ENSURE(Ptr)                                                            \
     if (!Ptr)                                                                  \
     goto fail
 
 static bool g_initialized = false;
+#ifdef SENTRY__MUTEX_INIT_DYN
+SENTRY__MUTEX_INIT_DYN(g_mutex)
+#else
 static sentry_mutex_t g_mutex = SENTRY__MUTEX_INIT;
+#endif
 static sentry_value_t g_modules = { 0 };
 
 static sentry_slice_t LINUX_GATE = { "linux-gate.so", 13 };
@@ -138,9 +141,12 @@ read_safely(void *dst, void *src, size_t size)
     // See https://github.com/getsentry/sentry-native/issues/578).
     // Also, the syscall is only available in Linux 3.2, meaning Android 17.
     // In that case we get an `EINVAL`.
+    // Additionally, in some seccomp-restricted environments,
+    // `process_vm_readv` may be unavailable and fail with `ENOSYS` (see
+    // https://github.com/getsentry/sentry-native/issues/1653).
     //
-    // In either of these cases, just fall back to an unsafe `memcpy`.
-    if (!rv && (errno == EPERM || errno == EINVAL)) {
+    // In any of these cases, just fall back to an unsafe `memcpy`.
+    if (!rv && (errno == EPERM || errno == EINVAL || errno == ENOSYS)) {
         memcpy(dst, src, size);
         rv = true;
     }
@@ -165,7 +171,7 @@ sentry__module_read_safely(void *dst, const sentry_module_t *module,
     return read_safely(dst, src, (size_t)size);
 }
 
-static void
+void
 sentry__module_mapping_push(
     sentry_module_t *module, const sentry_parsed_module_t *parsed)
 {
@@ -233,7 +239,7 @@ sentry__procmaps_parse_module_line(
     line += consumed;
     module->file.ptr = line;
     module->file.len = 0;
-    char *nl = strchr(line, '\n');
+    const char *nl = strchr(line, '\n');
     // `consumed` skips over whitespace (the trailing newline), so we have to
     // check for that explicitly
     if (consumed && (line - 1)[0] == '\n') {
@@ -250,47 +256,6 @@ sentry__procmaps_parse_module_line(
     return consumed;
 }
 
-void
-align(size_t alignment, void **offset)
-{
-    size_t diff = (size_t)*offset % alignment;
-    if (diff != 0) {
-        *(size_t *)offset += alignment - diff;
-    }
-}
-
-static const uint8_t *
-get_code_id_from_notes(
-    size_t alignment, void *start, void *end, size_t *size_out)
-{
-    *size_out = 0;
-    if (alignment < 4) {
-        alignment = 4;
-    } else if (alignment != 4 && alignment != 8) {
-        return NULL;
-    }
-
-    const uint8_t *offset = start;
-    while (offset < (const uint8_t *)end) {
-        // The note header size is independent of the architecture, so we just
-        // use the `Elf64_Nhdr` variant.
-        const Elf64_Nhdr *note = (const Elf64_Nhdr *)offset;
-        // the headers are consecutive, and the optional `name` and `desc` are
-        // saved inline after the header.
-
-        offset += sizeof(Elf64_Nhdr);
-        offset += note->n_namesz;
-        align(alignment, (void **)&offset);
-        if (note->n_type == NT_GNU_BUILD_ID) {
-            *size_out = note->n_descsz;
-            return offset;
-        }
-        offset += note->n_descsz;
-        align(alignment, (void **)&offset);
-    }
-    return NULL;
-}
-
 static const uint8_t *
 get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
 {
@@ -303,10 +268,11 @@ get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
         Elf64_Ehdr elf;
         ENSURE(sentry__module_read_safely(&elf, module, 0, sizeof(Elf64_Ehdr)));
 
-        for (int i = 0; i < elf.e_phnum; i++) {
+        for (uint32_t i = 0; i < elf.e_phnum; i++) {
             Elf64_Phdr header;
             ENSURE(sentry__module_read_safely(&header, module,
-                elf.e_phoff + elf.e_phentsize * i, sizeof(Elf64_Phdr)));
+                elf.e_phoff + (uint64_t)elf.e_phentsize * i,
+                sizeof(Elf64_Phdr)));
 
             // we are only interested in notes
             if (header.p_type != PT_NOTE) {
@@ -315,9 +281,9 @@ get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
             void *segment_addr = sentry__module_get_addr(
                 module, header.p_offset, header.p_filesz);
             ENSURE(segment_addr);
-            const uint8_t *code_id = get_code_id_from_notes(header.p_align,
-                segment_addr,
-                (void *)((uintptr_t)segment_addr + header.p_filesz), size_out);
+            const uint8_t *code_id
+                = sentry__elf_find_note(segment_addr, header.p_filesz,
+                    header.p_align, NT_GNU_BUILD_ID, "GNU", 4, size_out);
             if (code_id) {
                 return code_id;
             }
@@ -326,10 +292,11 @@ get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
         Elf32_Ehdr elf;
         ENSURE(sentry__module_read_safely(&elf, module, 0, sizeof(Elf32_Ehdr)));
 
-        for (int i = 0; i < elf.e_phnum; i++) {
+        for (uint32_t i = 0; i < elf.e_phnum; i++) {
             Elf32_Phdr header;
             ENSURE(sentry__module_read_safely(&header, module,
-                elf.e_phoff + elf.e_phentsize * i, sizeof(Elf32_Phdr)));
+                elf.e_phoff + (uint64_t)elf.e_phentsize * i,
+                sizeof(Elf32_Phdr)));
 
             // we are only interested in notes
             if (header.p_type != PT_NOTE) {
@@ -338,9 +305,9 @@ get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
             void *segment_addr = sentry__module_get_addr(
                 module, header.p_offset, header.p_filesz);
             ENSURE(segment_addr);
-            const uint8_t *code_id = get_code_id_from_notes(header.p_align,
-                segment_addr,
-                (void *)((uintptr_t)segment_addr + header.p_filesz), size_out);
+            const uint8_t *code_id
+                = sentry__elf_find_note(segment_addr, header.p_filesz,
+                    header.p_align, NT_GNU_BUILD_ID, "GNU", 4, size_out);
             if (code_id) {
                 return code_id;
             }
@@ -360,13 +327,14 @@ fail:
                                                                                \
         Elf64_Shdr strheader;                                                  \
         ENSURE(sentry__module_read_safely(&strheader, module,                  \
-            elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,                    \
+            elf.e_shoff + (uint64_t)elf.e_shentsize * elf.e_shstrndx,          \
             sizeof(Elf64_Shdr)));                                              \
                                                                                \
-        for (int i = 0; i < elf.e_shnum; i++) {                                \
+        for (uint32_t i = 0; i < elf.e_shnum; i++) {                           \
             Elf64_Shdr header;                                                 \
             ENSURE(sentry__module_read_safely(&header, module,                 \
-                elf.e_shoff + elf.e_shentsize * i, sizeof(Elf64_Shdr)));       \
+                elf.e_shoff + (uint64_t)elf.e_shentsize * i,                   \
+                sizeof(Elf64_Shdr)));                                          \
                                                                                \
             char name[6];                                                      \
             ENSURE(sentry__module_read_safely(name, module,                    \
@@ -382,13 +350,14 @@ fail:
                                                                                \
         Elf32_Shdr strheader;                                                  \
         ENSURE(sentry__module_read_safely(&strheader, module,                  \
-            elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,                    \
+            elf.e_shoff + (uint64_t)elf.e_shentsize * elf.e_shstrndx,          \
             sizeof(Elf32_Shdr)));                                              \
                                                                                \
-        for (int i = 0; i < elf.e_shnum; i++) {                                \
+        for (uint32_t i = 0; i < elf.e_shnum; i++) {                           \
             Elf32_Shdr header;                                                 \
             ENSURE(sentry__module_read_safely(&header, module,                 \
-                elf.e_shoff + elf.e_shentsize * i, sizeof(Elf32_Shdr)));       \
+                elf.e_shoff + (uint64_t)elf.e_shentsize * i,                   \
+                sizeof(Elf32_Shdr)));                                          \
                                                                                \
             char name[6];                                                      \
             ENSURE(sentry__module_read_safely(name, module,                    \
@@ -409,9 +378,9 @@ get_code_id_from_note_section(const sentry_module_t *module, size_t *size_out)
             void *segment_addr = sentry__module_get_addr(
                 module, header.sh_offset, header.sh_size);
             ENSURE(segment_addr);
-            const uint8_t *code_id = get_code_id_from_notes(header.sh_addralign,
-                segment_addr,
-                (void *)((uintptr_t)segment_addr + header.sh_size), size_out);
+            const uint8_t *code_id
+                = sentry__elf_find_note(segment_addr, header.sh_size,
+                    header.sh_addralign, NT_GNU_BUILD_ID, "GNU", 4, size_out);
             if (code_id) {
                 return code_id;
             }
@@ -486,13 +455,7 @@ sentry__procmaps_read_ids_from_elf(
     // https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/#identifiers
     // in particular, the debug_id is a `little-endian GUID`, so we have
     // to do appropriate byte-flipping
-    char *uuid_bytes = uuid.bytes;
-    uint32_t *a = (uint32_t *)uuid_bytes;
-    *a = htonl(*a);
-    uint16_t *b = (uint16_t *)(uuid_bytes + 4);
-    *b = htons(*b);
-    uint16_t *c = (uint16_t *)(uuid_bytes + 6);
-    *c = htons(*c);
+    sentry__uuid_swap_guid_bytes(uuid.bytes);
 
     sentry_value_set_by_key(value, "debug_id", sentry__value_new_uuid(&uuid));
     return true;
@@ -568,12 +531,14 @@ try_append_module(sentry_value_t modules, const sentry_module_t *module)
 }
 
 // copied from:
-// https://github.com/google/breakpad/blob/216cea7bca53fa441a3ee0d0f5fd339a3a894224/src/client/linux/minidump_writer/linux_dumper.h#L61-L70
+// https://github.com/google/breakpad/blob/eb28e7ed9c1c1e1a717fa34ce0178bf471a6311f/src/client/linux/minidump_writer/linux_dumper.h#L61-L69
 #if defined(__i386) || defined(__ARM_EABI__)                                   \
-    || (defined(__mips__) && _MIPS_SIM == _ABIO32)
+    || (defined(__mips__) && _MIPS_SIM == _ABIO32)                             \
+    || (defined(__riscv) && __riscv_xlen == 32)
 typedef Elf32_auxv_t elf_aux_entry;
-#elif defined(__x86_64) || defined(__aarch64__) || defined(__powerpc64__)      \
-    || (defined(__mips__) && _MIPS_SIM != _ABIO32)
+#elif defined(__x86_64) || defined(__aarch64__)                                \
+    || (defined(__mips__) && _MIPS_SIM != _ABIO32)                             \
+    || (defined(__riscv) && __riscv_xlen == 64)
 typedef Elf64_auxv_t elf_aux_entry;
 #endif
 
@@ -717,12 +682,13 @@ load_modules(sentry_value_t modules)
 sentry_value_t
 sentry_get_modules_list(void)
 {
+    SENTRY__MUTEX_INIT_DYN_ONCE(g_mutex);
     sentry__mutex_lock(&g_mutex);
     if (!g_initialized) {
         g_modules = sentry_value_new_list();
-        SENTRY_TRACE("trying to read modules from /proc/self/maps");
+        SENTRY_DEBUG("trying to read modules from /proc/self/maps");
         load_modules(g_modules);
-        SENTRY_TRACEF("read %zu modules from /proc/self/maps",
+        SENTRY_DEBUGF("read %zu modules from /proc/self/maps",
             sentry_value_get_length(g_modules));
         sentry_value_freeze(g_modules);
         g_initialized = true;
@@ -736,6 +702,7 @@ sentry_get_modules_list(void)
 void
 sentry_clear_modulecache(void)
 {
+    SENTRY__MUTEX_INIT_DYN_ONCE(g_mutex);
     sentry__mutex_lock(&g_mutex);
     sentry_value_decref(g_modules);
     g_modules = sentry_value_new_null();
