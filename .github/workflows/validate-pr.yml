@@ -6,6 +6,7 @@ on:
 
 jobs:
   validate-pr:
+    if: github.repository_owner == 'getsentry'
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
