@@ -17,6 +17,9 @@ plugins {
 }
 
 buildscript {
+    configurations.classpath {
+        resolutionStrategy.activateDependencyLocking()
+    }
     repositories {
         google()
     }
@@ -35,6 +38,9 @@ buildscript {
 }
 
 allprojects {
+    dependencyLocking {
+        lockAllConfigurations()
+    }
     repositories {
         google()
         mavenCentral()
