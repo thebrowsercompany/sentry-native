@@ -167,7 +167,11 @@ public:
     CrashpadBackendUse(const CrashpadBackendUse &) = delete;
     CrashpadBackendUse &operator=(const CrashpadBackendUse &) = delete;
 
-    explicit operator bool() const { return state_ != nullptr; }
+    explicit
+    operator bool() const
+    {
+        return state_ != nullptr;
+    }
 
 private:
     crashpad_state_t *state_;
@@ -1224,22 +1228,27 @@ crashpad_backend_add_attachment(
         return;
     }
 
-    if (attachment->buf) {
-        if (!ensure_unique_path(attachment)
-            || sentry__path_write_buffer(
-                   attachment->path, attachment->buf, attachment->buf_len)
-                != 0) {
-            SENTRY_WARNF("failed to write crashpad attachment \"%s\"",
-                attachment->path->path);
-        }
-    }
+    // This may acquire the options lock, which shutdown holds while waiting.
+    bool has_unique_path = !attachment->buf || ensure_unique_path(attachment);
 
-    CrashpadBackendUse use(data);
-    if (!use || !data->client) {
-        return;
+    bool write_failed = false;
+    {
+        CrashpadBackendUse use(data);
+        if (!use || !data->client) {
+            return;
+        }
+        write_failed = attachment->buf
+            && (!has_unique_path
+                || sentry__path_write_buffer(
+                       attachment->path, attachment->buf, attachment->buf_len)
+                    != 0);
+        data->client->AddAttachment(
+            base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
     }
-    data->client->AddAttachment(
-        base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
+    if (write_failed) {
+        SENTRY_WARNF("failed to write crashpad attachment \"%s\"",
+            attachment->path->path);
+    }
 }
 
 static void
@@ -1247,12 +1256,16 @@ crashpad_backend_remove_attachment(
     sentry_backend_t *backend, sentry_attachment_t *attachment)
 {
     auto *data = static_cast<crashpad_state_t *>(backend->data);
-    if (data) {
+    if (!data) {
+        return;
+    }
+    {
         CrashpadBackendUse use(data);
-        if (use && data->client) {
-            data->client->RemoveAttachment(
-                base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
+        if (!use || !data->client) {
+            return;
         }
+        data->client->RemoveAttachment(
+            base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
     }
 
     if (attachment->buf && sentry__path_remove(attachment->path) != 0) {
