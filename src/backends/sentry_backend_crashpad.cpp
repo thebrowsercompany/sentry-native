@@ -124,6 +124,9 @@ constexpr int g_CrashSignals[] = {
 static_assert(std::atomic<bool>::is_always_lock_free,
     "The crashpad-backend requires lock-free atomic<bool> to safely handle "
     "crashes");
+static_assert(std::atomic<unsigned int>::is_always_lock_free,
+    "The crashpad-backend requires a lock-free use count to safely handle "
+    "crashes");
 
 typedef struct {
     crashpad::CrashReportDatabase *db;
@@ -135,8 +138,40 @@ typedef struct {
     size_t num_breadcrumbs;
     std::atomic<bool> crashed;
     std::atomic<bool> scope_flush;
+    std::atomic<bool> shutting_down;
+    std::atomic<unsigned int> active_uses;
     sentry_uuid_t crash_event_id;
 } crashpad_state_t;
+
+// Keep the client and database alive across calls that can overlap shutdown.
+class CrashpadBackendUse {
+public:
+    explicit CrashpadBackendUse(crashpad_state_t *state)
+        : state_(state)
+    {
+        // Sequential ordering lets shutdown observe every accepted use.
+        state_->active_uses.fetch_add(1);
+        if (state_->shutting_down.load()) {
+            state_->active_uses.fetch_sub(1);
+            state_ = nullptr;
+        }
+    }
+
+    ~CrashpadBackendUse()
+    {
+        if (state_) {
+            state_->active_uses.fetch_sub(1);
+        }
+    }
+
+    CrashpadBackendUse(const CrashpadBackendUse &) = delete;
+    CrashpadBackendUse &operator=(const CrashpadBackendUse &) = delete;
+
+    explicit operator bool() const { return state_ != nullptr; }
+
+private:
+    crashpad_state_t *state_;
+};
 
 /**
  * Correctly destruct C++ members of the crashpad state.
@@ -152,15 +187,16 @@ static void
 crashpad_backend_user_consent_changed(sentry_backend_t *backend)
 {
     auto *data = static_cast<crashpad_state_t *>(backend->data);
-    if (!data->db || !data->db->GetSettings()) {
-        return;
-    }
     const bool enabled = !sentry__should_skip_upload();
     bool paused = false;
     if (!enabled) {
         SENTRY_WITH_OPTIONS (options) {
             paused = options->cache_keep || options->http_retry;
         }
+    }
+    CrashpadBackendUse use(data);
+    if (!use || !data->db || !data->db->GetSettings()) {
+        return;
     }
     auto *settings = data->db->GetSettings();
     settings->SetUploadsEnabled(enabled);
@@ -218,7 +254,11 @@ static int
 write_attachment(crashpad_state_t *state, const sentry_path_t *path,
     const char *data, size_t size)
 {
-    if (!path || !state || !state->client) {
+    if (!path || !state) {
+        return 1;
+    }
+    CrashpadBackendUse use(state);
+    if (!use || !state->client) {
         return 1;
     }
     return state->client->WriteAttachment(
@@ -232,7 +272,11 @@ static int
 append_attachment(crashpad_state_t *state, const sentry_path_t *path,
     const char *data, size_t size)
 {
-    if (!path || !state || !state->client) {
+    if (!path || !state) {
+        return 1;
+    }
+    CrashpadBackendUse use(state);
+    if (!use || !state->client) {
         return 1;
     }
     return state->client->AppendAttachment(
@@ -958,12 +1002,18 @@ crashpad_backend_startup(
             crashpad::TriState::kEnabled);
     }
 
+    data->shutting_down.store(false);
     return 0;
 }
 
 static void
 crashpad_backend_shutdown(sentry_backend_t *backend)
 {
+    auto *data = static_cast<crashpad_state_t *>(backend->data);
+    data->shutting_down.store(true);
+    while (data->active_uses.load() != 0) {
+        sentry__cpu_relax();
+    }
 #ifdef SENTRY_PLATFORM_LINUX
     // restore signal handlers to their default state
     for (const auto signal : g_CrashSignals) {
@@ -973,7 +1023,7 @@ crashpad_backend_shutdown(sentry_backend_t *backend)
     }
 #endif
 
-    crashpad_state_dtor(static_cast<crashpad_state_t *>(backend->data));
+    crashpad_state_dtor(data);
 
 #ifdef SENTRY_PLATFORM_LINUX
     g_signal_stack.ss_flags = SS_DISABLE;
@@ -1170,7 +1220,7 @@ crashpad_backend_add_attachment(
     sentry_backend_t *backend, sentry_attachment_t *attachment)
 {
     auto *data = static_cast<crashpad_state_t *>(backend->data);
-    if (!data || !data->client) {
+    if (!data) {
         return;
     }
 
@@ -1184,6 +1234,10 @@ crashpad_backend_add_attachment(
         }
     }
 
+    CrashpadBackendUse use(data);
+    if (!use || !data->client) {
+        return;
+    }
     data->client->AddAttachment(
         base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
 }
@@ -1193,11 +1247,13 @@ crashpad_backend_remove_attachment(
     sentry_backend_t *backend, sentry_attachment_t *attachment)
 {
     auto *data = static_cast<crashpad_state_t *>(backend->data);
-    if (!data || !data->client) {
-        return;
+    if (data) {
+        CrashpadBackendUse use(data);
+        if (use && data->client) {
+            data->client->RemoveAttachment(
+                base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
+        }
     }
-    data->client->RemoveAttachment(
-        base::FilePath(SENTRY_PATH_PLATFORM_STR(attachment->path)));
 
     if (attachment->buf && sentry__path_remove(attachment->path) != 0) {
         SENTRY_WARNF("failed to remove crashpad attachment \"%s\"",
@@ -1226,6 +1282,8 @@ sentry__backend_new(void)
     }
     data->scope_flush = false;
     data->crashed = false;
+    data->shutting_down = false;
+    data->active_uses = 0;
 
     backend->startup_func = crashpad_backend_startup;
     backend->shutdown_func = crashpad_backend_shutdown;
